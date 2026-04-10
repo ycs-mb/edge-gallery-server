@@ -175,7 +175,7 @@ private class EdgeGalleryHttpServer : NanoHTTPD(SERVER_HOST, SERVER_PORT) {
     val model = ActiveLlmModelRegistry.get(requestedModel)
     if (model == null) {
       return jsonError(
-        Status.CONFLICT,
+        Status.SERVICE_UNAVAILABLE,
         "No initialized Edge Gallery local LLM is available. Open the app, initialize a local chat-capable model, and keep it running before calling the local API.",
       )
     }
@@ -189,7 +189,7 @@ private class EdgeGalleryHttpServer : NanoHTTPD(SERVER_HOST, SERVER_PORT) {
     val created = System.currentTimeMillis() / 1000
     val enableThinking =
       requestJson.getJsonObjectOrNull("extra_body")?.getBooleanOrDefault("enable_thinking", false)
-    val extraContext = if (enableThinking == true) mapOf("enable_thinking" to "true") else null
+    val extraContext = if (enableThinking) mapOf("enable_thinking" to "true") else null
 
     return if (stream) {
       streamCompletion(
