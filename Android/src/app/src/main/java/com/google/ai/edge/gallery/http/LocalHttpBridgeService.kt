@@ -176,7 +176,7 @@ private class EdgeGalleryHttpServer : NanoHTTPD(SERVER_HOST, SERVER_PORT) {
     if (model == null) {
       return jsonError(
         Status.CONFLICT,
-        "No initialized Edge Gallery LLM is available. Open AI Chat, load Gemma 4, and keep the app running before calling the local API.",
+        "No initialized Edge Gallery local LLM is available. Open the app, initialize a local chat-capable model, and keep it running before calling the local API.",
       )
     }
 
@@ -394,7 +394,7 @@ private class EdgeGalleryHttpServer : NanoHTTPD(SERVER_HOST, SERVER_PORT) {
   }
 
   private fun buildPrompt(messages: JsonArray?): String {
-    if (messages == null || messages.size() == 0) {
+    if (messages == null || messages.isEmpty) {
       return ""
     }
     return buildString {
