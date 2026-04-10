@@ -120,6 +120,9 @@ dependencies {
   debugImplementation(libs.androidx.ui.test.manifest)
   ksp(libs.moshi.kotlin.codegen)
   implementation(libs.mlkit.genai.prompt)
+  // Lightweight HTTP server used by the local OpenAI-compatible endpoint
+  // (see com.google.ai.edge.gallery.server). Runs inside a foreground service.
+  implementation(libs.nanohttpd)
 }
 
 protobuf {
