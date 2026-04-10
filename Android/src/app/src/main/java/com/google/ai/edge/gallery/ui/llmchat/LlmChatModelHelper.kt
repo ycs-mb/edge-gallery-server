@@ -28,6 +28,7 @@ import com.google.ai.edge.gallery.data.DEFAULT_TOPK
 import com.google.ai.edge.gallery.data.DEFAULT_TOPP
 import com.google.ai.edge.gallery.data.DEFAULT_VISION_ACCELERATOR
 import com.google.ai.edge.gallery.data.Model
+import com.google.ai.edge.gallery.http.ActiveLlmModelRegistry
 import com.google.ai.edge.gallery.runtime.CleanUpListener
 import com.google.ai.edge.gallery.runtime.LlmModelHelper
 import com.google.ai.edge.gallery.runtime.ResultListener
@@ -142,6 +143,7 @@ object LlmChatModelHelper : LlmModelHelper {
         )
       ExperimentalFlags.enableConversationConstrainedDecoding = false
       model.instance = LlmModelInstance(engine = engine, conversation = conversation)
+      ActiveLlmModelRegistry.register(model)
     } catch (e: Exception) {
       onDone(cleanUpMediapipeTaskErrorMessage(e.message ?: "Unknown error"))
       return
@@ -230,6 +232,7 @@ object LlmChatModelHelper : LlmModelHelper {
       onCleanUp()
     }
     model.instance = null
+    ActiveLlmModelRegistry.unregister(model)
 
     onDone()
     Log.d(TAG, "Clean up done.")
@@ -262,8 +265,109 @@ object LlmChatModelHelper : LlmModelHelper {
       cleanUpListeners[model.name] = cleanUpListener
     }
 
-    val conversation = instance.conversation
+    sendMessage(
+      conversation = instance.conversation,
+      input = input,
+      resultListener = resultListener,
+      onError = onError,
+      images = images,
+      audioClips = audioClips,
+      extraContext = extraContext,
+    )
+  }
 
+  fun runIsolatedTextInference(
+    model: Model,
+    input: String,
+    resultListener: ResultListener,
+    onError: (message: String) -> Unit = {},
+    extraContext: Map<String, String>? = null,
+  ) {
+    val instance = model.instance as? LlmModelInstance
+    if (instance == null) {
+      onError("LlmModelInstance is not initialized.")
+      return
+    }
+
+    val conversation =
+      try {
+        createConversation(
+          engine = instance.engine,
+          model = model,
+          systemInstruction = null,
+          tools = listOf(),
+          enableConversationConstrainedDecoding = false,
+        )
+      } catch (e: Exception) {
+        Log.e(TAG, "Failed to create isolated conversation", e)
+        onError("Error: ${e.message}")
+        return
+      }
+
+    sendMessage(
+      conversation = conversation,
+      input = input,
+      resultListener = resultListener,
+      onError = onError,
+      extraContext = extraContext,
+      onComplete = {
+        try {
+          conversation.close()
+        } catch (e: Exception) {
+          Log.w(TAG, "Failed to close isolated conversation", e)
+        }
+      },
+    )
+  }
+
+  @OptIn(ExperimentalApi::class)
+  private fun createConversation(
+    engine: Engine,
+    model: Model,
+    systemInstruction: Contents?,
+    tools: List<ToolProvider>,
+    enableConversationConstrainedDecoding: Boolean,
+  ): Conversation {
+    val topK = model.getIntConfigValue(key = ConfigKeys.TOPK, defaultValue = DEFAULT_TOPK)
+    val topP = model.getFloatConfigValue(key = ConfigKeys.TOPP, defaultValue = DEFAULT_TOPP)
+    val temperature =
+      model.getFloatConfigValue(key = ConfigKeys.TEMPERATURE, defaultValue = DEFAULT_TEMPERATURE)
+    val accelerator =
+      model.getStringConfigValue(key = ConfigKeys.ACCELERATOR, defaultValue = Accelerator.GPU.label)
+
+    ExperimentalFlags.enableConversationConstrainedDecoding = enableConversationConstrainedDecoding
+    return try {
+      engine.createConversation(
+        ConversationConfig(
+          samplerConfig =
+            if (accelerator == Accelerator.NPU.label) {
+              null
+            } else {
+              SamplerConfig(
+                topK = topK,
+                topP = topP.toDouble(),
+                temperature = temperature.toDouble(),
+              )
+            },
+          systemInstruction = systemInstruction,
+          tools = tools,
+        )
+      )
+    } finally {
+      ExperimentalFlags.enableConversationConstrainedDecoding = false
+    }
+  }
+
+  private fun sendMessage(
+    conversation: Conversation,
+    input: String,
+    resultListener: ResultListener,
+    onError: (message: String) -> Unit,
+    images: List<Bitmap> = listOf(),
+    audioClips: List<ByteArray> = listOf(),
+    extraContext: Map<String, String>? = null,
+    onComplete: () -> Unit = {},
+  ) {
     val contents = mutableListOf<Content>()
     for (image in images) {
       contents.add(Content.ImageBytes(image.toPngByteArray()))
@@ -271,34 +375,50 @@ object LlmChatModelHelper : LlmModelHelper {
     for (audioClip in audioClips) {
       contents.add(Content.AudioBytes(audioClip))
     }
-    // add the text after image and audio for the accurate last token
     if (input.trim().isNotEmpty()) {
       contents.add(Content.Text(input))
     }
 
-    conversation.sendMessageAsync(
-      Contents.of(contents),
-      object : MessageCallback {
-        override fun onMessage(message: Message) {
-          resultListener(message.toString(), false, message.channels["thought"])
-        }
-
-        override fun onDone() {
-          resultListener("", true, null)
-        }
-
-        override fun onError(throwable: Throwable) {
-          if (throwable is CancellationException) {
-            Log.i(TAG, "The inference is cancelled.")
-            resultListener("", true, null)
-          } else {
-            Log.e(TAG, "onError", throwable)
-            onError("Error: ${throwable.message}")
+    try {
+      conversation.sendMessageAsync(
+        Contents.of(contents),
+        object : MessageCallback {
+          override fun onMessage(message: Message) {
+            resultListener(message.toString(), false, message.channels["thought"])
           }
-        }
-      },
-      extraContext ?: emptyMap(),
-    )
+
+          override fun onDone() {
+            try {
+              resultListener("", true, null)
+            } finally {
+              onComplete()
+            }
+          }
+
+          override fun onError(throwable: Throwable) {
+            try {
+              if (throwable is CancellationException) {
+                Log.i(TAG, "The inference is cancelled.")
+                resultListener("", true, null)
+              } else {
+                Log.e(TAG, "onError", throwable)
+                onError("Error: ${throwable.message}")
+              }
+            } finally {
+              onComplete()
+            }
+          }
+        },
+        extraContext ?: emptyMap(),
+      )
+    } catch (e: Exception) {
+      try {
+        Log.e(TAG, "Failed to send message", e)
+        onError("Error: ${e.message}")
+      } finally {
+        onComplete()
+      }
+    }
   }
 
   private fun Bitmap.toPngByteArray(): ByteArray {
