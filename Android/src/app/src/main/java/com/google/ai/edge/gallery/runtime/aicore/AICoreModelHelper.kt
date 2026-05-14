@@ -22,6 +22,7 @@ import android.util.Log
 import com.google.ai.edge.gallery.common.cleanUpMediapipeTaskErrorMessage
 import com.google.ai.edge.gallery.data.AICoreModelPreference
 import com.google.ai.edge.gallery.data.AICoreModelReleaseStage
+import com.google.ai.edge.gallery.server.ServerModelHolder
 import com.google.ai.edge.gallery.data.ConfigKeys
 import com.google.ai.edge.gallery.data.DEFAULT_TEMPERATURE
 import com.google.ai.edge.gallery.data.DEFAULT_TOPK
@@ -86,6 +87,7 @@ object AICoreModelHelper : LlmModelHelper {
             generativeModel.warmup()
             updateTokenLimit(model, generativeModel)
             model.instance = AICoreModelInstance(generativeModel)
+            ServerModelHolder.publish(model)
             onDone("Feature is available")
           }
           FeatureStatus.DOWNLOADABLE,
@@ -105,6 +107,7 @@ object AICoreModelHelper : LlmModelHelper {
                   generativeModel.warmup()
                   updateTokenLimit(model, generativeModel)
                   model.instance = AICoreModelInstance(generativeModel)
+                  ServerModelHolder.publish(model)
                   onDone("Download completed")
                 }
               }
@@ -217,6 +220,7 @@ object AICoreModelHelper : LlmModelHelper {
       onCleanUp()
     }
     model.instance = null
+    ServerModelHolder.clearIfMatches(model)
 
     // Mitigation of OOM relies on the JVM GC now that references are cleared.
     onDone()

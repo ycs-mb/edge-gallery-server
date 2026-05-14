@@ -29,8 +29,7 @@ import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.google.ai.edge.gallery.R
-import com.google.ai.edge.gallery.ui.llmchat.LlmChatModelHelper
-import java.io.File
+import com.google.ai.edge.gallery.runtime.runtimeHelper
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import kotlinx.coroutines.CoroutineScope
@@ -162,8 +161,8 @@ class LlmServerService : Service() {
   }
 
   /**
-   * Reads the configured default model from local prefs and initialises it via
-   * [LlmChatModelHelper]. Only called when [R.bool.server_auto_load_model] is true.
+   * Reads the configured default model from local prefs and initialises it via the appropriate
+   * runtime helper. Only called when [R.bool.server_auto_load_model] is true.
    */
   private fun autoLoadDefaultModel() {
     val prefs = getSharedPreferences(ImportedModelStore.PREFS_NAME, Context.MODE_PRIVATE)
@@ -173,33 +172,25 @@ class LlmServerService : Service() {
       return
     }
 
-    val meta =
-      ImportedModelStore.readImported(this).find { it.name == defaultName }
-        ?: run {
-          Log.w(TAG, "Default model '$defaultName' not found in imported_models.json")
-          return
-        }
-
-    val model = ImportedModelStore.toModel(meta)
-    val expectedPath = model.getPath(this)
-    if (!File(expectedPath).exists()) {
-      Log.w(TAG, "Default model file is missing on disk: $expectedPath")
+    val model = AICoreModelFactory.createModel(defaultName)
+    if (model == null) {
+      Log.w(TAG, "Unknown AICore model: $defaultName")
       return
     }
 
-    Log.d(TAG, "Auto-loading default model: ${meta.name} from $expectedPath")
-    LlmChatModelHelper.initialize(
+    Log.d(TAG, "Auto-loading AICore model: ${model.name}")
+    model.runtimeHelper.initialize(
       context = this,
       model = model,
       supportImage = false,
       supportAudio = false,
-      onDone = { error ->
-        if (error.isEmpty()) {
-          Log.d(TAG, "Default model loaded successfully: ${meta.name}")
-          // Refresh the foreground notification so it surfaces the active model name.
+      coroutineScope = serviceScope,
+      onDone = { status ->
+        if (model.instance != null) {
+          Log.d(TAG, "AICore model loaded: ${model.name}")
           if (isRunning) startForegroundWithNotification(runningPort)
         } else {
-          Log.e(TAG, "Failed to auto-load default model '${meta.name}': $error")
+          Log.e(TAG, "Failed to auto-load AICore model: $status")
         }
       },
     )
