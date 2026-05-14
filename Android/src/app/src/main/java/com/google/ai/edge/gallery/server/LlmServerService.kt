@@ -29,8 +29,7 @@ import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.google.ai.edge.gallery.R
-import com.google.ai.edge.gallery.ui.llmchat.LlmChatModelHelper
-import java.io.File
+import com.google.ai.edge.gallery.runtime.runtimeHelper
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import kotlinx.coroutines.CoroutineScope
@@ -53,7 +52,7 @@ class LlmServerService : Service() {
     private const val TAG = "AGLlmServerService"
     private const val NOTIFICATION_ID = 0x6e7474 // "ntt"
     private const val CHANNEL_ID = "edge_gallery_llm_server"
-    private const val CHANNEL_NAME = "Local LLM server"
+    private const val CHANNEL_NAME = "Pixel AI Server"
     private const val WAKE_LOCK_TAG = "EdgeGallery::LlmServerWakeLock"
     private const val WIFI_LOCK_TAG = "EdgeGallery::LlmServerWifiLock"
 
@@ -162,8 +161,8 @@ class LlmServerService : Service() {
   }
 
   /**
-   * Reads the configured default model from local prefs and initialises it via
-   * [LlmChatModelHelper]. Only called when [R.bool.server_auto_load_model] is true.
+   * Reads the configured default model from local prefs and initialises it via the appropriate
+   * runtime helper. Only called when [R.bool.server_auto_load_model] is true.
    */
   private fun autoLoadDefaultModel() {
     val prefs = getSharedPreferences(ImportedModelStore.PREFS_NAME, Context.MODE_PRIVATE)
@@ -173,33 +172,25 @@ class LlmServerService : Service() {
       return
     }
 
-    val meta =
-      ImportedModelStore.readImported(this).find { it.name == defaultName }
-        ?: run {
-          Log.w(TAG, "Default model '$defaultName' not found in imported_models.json")
-          return
-        }
-
-    val model = ImportedModelStore.toModel(meta)
-    val expectedPath = model.getPath(this)
-    if (!File(expectedPath).exists()) {
-      Log.w(TAG, "Default model file is missing on disk: $expectedPath")
+    val model = AICoreModelFactory.createModel(defaultName)
+    if (model == null) {
+      Log.w(TAG, "Unknown AICore model: $defaultName")
       return
     }
 
-    Log.d(TAG, "Auto-loading default model: ${meta.name} from $expectedPath")
-    LlmChatModelHelper.initialize(
+    Log.d(TAG, "Auto-loading AICore model: ${model.name}")
+    model.runtimeHelper.initialize(
       context = this,
       model = model,
       supportImage = false,
       supportAudio = false,
-      onDone = { error ->
-        if (error.isEmpty()) {
-          Log.d(TAG, "Default model loaded successfully: ${meta.name}")
-          // Refresh the foreground notification so it surfaces the active model name.
+      coroutineScope = serviceScope,
+      onDone = { status ->
+        if (model.instance != null) {
+          Log.d(TAG, "AICore model loaded: ${model.name}")
           if (isRunning) startForegroundWithNotification(runningPort)
         } else {
-          Log.e(TAG, "Failed to auto-load default model '${meta.name}': $error")
+          Log.e(TAG, "Failed to auto-load AICore model: $status")
         }
       },
     )
@@ -291,7 +282,7 @@ class LlmServerService : Service() {
 
     val notification =
       NotificationCompat.Builder(this, CHANNEL_ID)
-        .setContentTitle("Edge Gallery LLM server")
+        .setContentTitle("Pixel AI Server")
         .setContentText("Listening on http://$ip:$port  •  $activeModel")
         .setSmallIcon(R.mipmap.ic_launcher)
         .setOngoing(true)
@@ -307,20 +298,22 @@ class LlmServerService : Service() {
         )
         .build()
 
-    // `FOREGROUND_SERVICE_TYPE_DATA_SYNC` and the matching permission are mandatory on Android 14+
-    // (API 34) and harmless on earlier versions (we target minSdk=31). The permission is declared
-    // in AndroidManifest.xml as FOREGROUND_SERVICE + FOREGROUND_SERVICE_DATA_SYNC.
+    // DATA_SYNC is required on Android 14+ (API 34). SPECIAL_USE is added so that AICore's
+    // foreground check is satisfied even when the launcher Activity is not visible — without it,
+    // AICore returns ErrorCode 30 "Background usage is blocked" for any inference request made
+    // while the user has switched away from the app.
     startForeground(
       NOTIFICATION_ID,
       notification,
-      ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+      ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or
+        ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
     )
   }
 
   private fun startForegroundWithErrorNotification(message: String) {
     val notification =
       NotificationCompat.Builder(this, CHANNEL_ID)
-        .setContentTitle("Edge Gallery LLM server")
+        .setContentTitle("Pixel AI Server")
         .setContentText(message)
         .setSmallIcon(R.mipmap.ic_launcher)
         .setOngoing(false)
@@ -329,7 +322,8 @@ class LlmServerService : Service() {
     startForeground(
       NOTIFICATION_ID,
       notification,
-      ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+      ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or
+        ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
     )
   }
 

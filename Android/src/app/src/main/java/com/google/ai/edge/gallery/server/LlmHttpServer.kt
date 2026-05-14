@@ -23,6 +23,10 @@ import fi.iki.elonen.NanoHTTPD
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -44,6 +48,13 @@ class LlmHttpServer(port: Int) : NanoHTTPD(port) {
     private const val TAG = "AGLlmHttpServer"
     /** Hard upper bound on how long a single inference call is allowed to take. */
     private val INFERENCE_TIMEOUT = TimeUnit.MINUTES.toMillis(5)
+  }
+
+  private val serverScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+  override fun stop() {
+    serverScope.cancel()
+    super.stop()
   }
 
   override fun serve(session: IHTTPSession): Response {
@@ -79,7 +90,7 @@ class LlmHttpServer(port: Int) : NanoHTTPD(port) {
     val model = ServerModelHolder.activeModel
     val body =
       buildString {
-        append("Edge Gallery local LLM server\n")
+        append("Pixel AI Server\n")
         append("=============================\n\n")
         append("Status: running\n")
         append("Active model: ${model?.name ?: "<none loaded>"}\n\n")
@@ -246,6 +257,7 @@ class LlmHttpServer(port: Int) : NanoHTTPD(port) {
         resultListener = resultListener,
         cleanUpListener = cleanUpListener,
         onError = onError,
+        coroutineScope = serverScope,
       )
     } catch (t: Throwable) {
       Log.e(TAG, "runInference threw synchronously", t)

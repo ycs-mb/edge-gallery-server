@@ -7,5 +7,5 @@
     <string name="server_tap_activity_class" translatable="false">com.google.ai.edge.gallery.serveronly.ServerLauncherActivity</string>
 
     <!-- App label shown under the launcher icon for the standalone APK. -->
-    <string name="server_app_name" translatable="false">Edge Gallery Server</string>
+    <string name="server_app_name" translatable="false">Pixel AI Server</string>
 </resources>

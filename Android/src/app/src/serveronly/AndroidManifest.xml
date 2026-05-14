@@ -18,19 +18,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!--
-      Request the signature-protected permission declared by the full Edge Gallery
-      app's ModelExportProvider so we can read its downloaded models.
-    -->
-    <uses-permission android:name="com.google.aiedge.gallery.permission.EXPORT_MODELS" />
+    <!-- Required for binding to the Google AI Core service (Gemini Nano on-device). -->
+    <uses-permission android:name="com.google.android.apps.aicore.service.BIND_SERVICE" />
 
     <application
         android:label="@string/server_app_name"
         tools:replace="android:label">
         <!--
           ServerLauncherActivity is the only entry point for the standalone server APK.
-          It lets the user import models from the full Edge Gallery app, pick a default
-          model, and start/stop the embedded HTTP server.
+          It lets the user pick an AICore model (Gemini Nano), download it if needed,
+          and start/stop the embedded HTTP server.
         -->
         <activity
             android:name="com.google.ai.edge.gallery.serveronly.ServerLauncherActivity"
