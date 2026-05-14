@@ -90,7 +90,7 @@ class LlmHttpServer(port: Int) : NanoHTTPD(port) {
     val model = ServerModelHolder.activeModel
     val body =
       buildString {
-        append("Edge Gallery local LLM server\n")
+        append("Pixel AI Server\n")
         append("=============================\n\n")
         append("Status: running\n")
         append("Active model: ${model?.name ?: "<none loaded>"}\n\n")

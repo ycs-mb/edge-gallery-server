@@ -144,7 +144,7 @@ private fun ServerLauncherScreen() {
   }
 
   Scaffold(
-    topBar = { TopAppBar(title = { Text("Edge Gallery Server") }) },
+    topBar = { TopAppBar(title = { Text("Pixel AI Server") }) },
   ) { padding ->
     Column(
       modifier =

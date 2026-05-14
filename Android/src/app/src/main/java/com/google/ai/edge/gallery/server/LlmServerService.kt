@@ -52,7 +52,7 @@ class LlmServerService : Service() {
     private const val TAG = "AGLlmServerService"
     private const val NOTIFICATION_ID = 0x6e7474 // "ntt"
     private const val CHANNEL_ID = "edge_gallery_llm_server"
-    private const val CHANNEL_NAME = "Local LLM server"
+    private const val CHANNEL_NAME = "Pixel AI Server"
     private const val WAKE_LOCK_TAG = "EdgeGallery::LlmServerWakeLock"
     private const val WIFI_LOCK_TAG = "EdgeGallery::LlmServerWifiLock"
 
@@ -282,7 +282,7 @@ class LlmServerService : Service() {
 
     val notification =
       NotificationCompat.Builder(this, CHANNEL_ID)
-        .setContentTitle("Edge Gallery LLM server")
+        .setContentTitle("Pixel AI Server")
         .setContentText("Listening on http://$ip:$port  •  $activeModel")
         .setSmallIcon(R.mipmap.ic_launcher)
         .setOngoing(true)
@@ -313,7 +313,7 @@ class LlmServerService : Service() {
   private fun startForegroundWithErrorNotification(message: String) {
     val notification =
       NotificationCompat.Builder(this, CHANNEL_ID)
-        .setContentTitle("Edge Gallery LLM server")
+        .setContentTitle("Pixel AI Server")
         .setContentText(message)
         .setSmallIcon(R.mipmap.ic_launcher)
         .setOngoing(false)
