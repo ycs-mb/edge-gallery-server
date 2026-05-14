@@ -16,11 +16,15 @@
 
 package com.google.ai.edge.gallery.serveronly
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -72,8 +76,17 @@ import kotlinx.coroutines.withContext
 private const val TAG = "ServerLauncher"
 
 class ServerLauncherActivity : ComponentActivity() {
+
+  private val notificationPermissionLauncher =
+    registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+          PackageManager.PERMISSION_GRANTED) {
+      notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
     setContent {
       MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) { ServerLauncherScreen() }

@@ -298,13 +298,15 @@ class LlmServerService : Service() {
         )
         .build()
 
-    // `FOREGROUND_SERVICE_TYPE_DATA_SYNC` and the matching permission are mandatory on Android 14+
-    // (API 34) and harmless on earlier versions (we target minSdk=31). The permission is declared
-    // in AndroidManifest.xml as FOREGROUND_SERVICE + FOREGROUND_SERVICE_DATA_SYNC.
+    // DATA_SYNC is required on Android 14+ (API 34). SPECIAL_USE is added so that AICore's
+    // foreground check is satisfied even when the launcher Activity is not visible — without it,
+    // AICore returns ErrorCode 30 "Background usage is blocked" for any inference request made
+    // while the user has switched away from the app.
     startForeground(
       NOTIFICATION_ID,
       notification,
-      ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+      ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or
+        ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
     )
   }
 
@@ -320,7 +322,8 @@ class LlmServerService : Service() {
     startForeground(
       NOTIFICATION_ID,
       notification,
-      ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+      ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or
+        ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
     )
   }
 
