@@ -44,7 +44,7 @@ constructor(
       _status.value =
         runCatching {
             val health =
-              URLBuilder(endpoint).apply { encodedPath = "/health" }.build()
+              URLBuilder(endpoint).apply { rawPath = "/health" }.build()
             val resp = httpClient.get(health)
             "Reachable (HTTP ${resp.status.value})"
           }
