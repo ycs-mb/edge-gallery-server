@@ -14,9 +14,10 @@ name: Android CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, custom/server-feature ]
     paths:
       - 'SmartScreenshotOrganizer/**'
+      - '.github/workflows/android-ci.yml'
   pull_request:
     branches: [ main ]
     paths:
