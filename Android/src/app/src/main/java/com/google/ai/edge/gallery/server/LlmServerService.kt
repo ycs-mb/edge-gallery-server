@@ -191,6 +191,7 @@ class LlmServerService : Service() {
     LlmChatModelHelper.initialize(
       context = this,
       model = model,
+      taskId = "",
       supportImage = false,
       supportAudio = false,
       onDone = { error ->
