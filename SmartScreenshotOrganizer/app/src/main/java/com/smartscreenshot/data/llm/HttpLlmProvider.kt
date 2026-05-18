@@ -13,7 +13,6 @@ import com.smartscreenshot.domain.model.AnalysisResult
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.post
-import io.ktor.client.plugins.timeout
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
@@ -71,7 +70,6 @@ constructor(private val client: HttpClient, private val settings: SettingsReposi
           .post(endpoint) {
             contentType(ContentType.Application.Json)
             setBody(ChatCompletionRequest(messages = messages))
-            timeout { requestTimeoutMillis = REQUEST_TIMEOUT_MS }
           }
           .body()
       response.firstContent().ifBlank { null }
@@ -84,6 +82,5 @@ constructor(private val client: HttpClient, private val settings: SettingsReposi
 
   companion object {
     private const val TAG = "HttpLlmProvider"
-    private const val REQUEST_TIMEOUT_MS = 120_000L
   }
 }

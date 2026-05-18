@@ -21,7 +21,11 @@ object NetworkModule {
   fun provideHttpClient(): HttpClient =
     HttpClient(Android) {
       expectSuccess = false
-      install(HttpTimeout)
+      install(HttpTimeout) {
+        requestTimeoutMillis = 120_000L
+        connectTimeoutMillis = 30_000L
+        socketTimeoutMillis = 120_000L
+      }
       install(ContentNegotiation) {
         json(Json { ignoreUnknownKeys = true; isLenient = true })
       }

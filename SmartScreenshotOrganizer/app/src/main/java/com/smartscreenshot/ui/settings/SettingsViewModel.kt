@@ -9,7 +9,6 @@ import com.smartscreenshot.domain.llm.LlmProviderType
 import dagger.hilt.android.lifecycle.HiltViewModel
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
-import io.ktor.http.URLBuilder
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -43,9 +42,8 @@ constructor(
       val endpoint = settings.current().httpEndpoint
       _status.value =
         runCatching {
-            val health =
-              URLBuilder(endpoint).apply { rawPath = "/health" }.build()
-            val resp = httpClient.get(health)
+            val base = endpoint.substringBefore("/v1/").trimEnd('/')
+            val resp = httpClient.get("$base/health")
             "Reachable (HTTP ${resp.status.value})"
           }
           .getOrElse { "Unreachable: ${it.message}" }
