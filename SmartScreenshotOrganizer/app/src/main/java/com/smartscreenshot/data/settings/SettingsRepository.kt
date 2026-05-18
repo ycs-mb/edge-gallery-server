@@ -19,6 +19,8 @@ data class AppSettings(
   val httpEndpoint: String = DEFAULT_ENDPOINT,
   val lastIndexedDateAdded: Long = 0L,
   val embeddingModelVersion: String = "",
+  /** SAF tree URI of a user-picked folder to scan, or empty if none. */
+  val pickedFolderUri: String = "",
 ) {
   companion object {
     const val DEFAULT_ENDPOINT = "http://10.0.2.2:8080/v1/chat/completions"
@@ -33,6 +35,7 @@ class SettingsRepository @Inject constructor(private val context: Context) {
     val ENDPOINT = stringPreferencesKey("http_endpoint")
     val LAST_INDEXED = longPreferencesKey("last_indexed_date_added")
     val EMBED_VERSION = stringPreferencesKey("embedding_model_version")
+    val FOLDER_URI = stringPreferencesKey("picked_folder_uri")
   }
 
   val settings: Flow<AppSettings> =
@@ -44,6 +47,7 @@ class SettingsRepository @Inject constructor(private val context: Context) {
         httpEndpoint = p[Keys.ENDPOINT] ?: AppSettings.DEFAULT_ENDPOINT,
         lastIndexedDateAdded = p[Keys.LAST_INDEXED] ?: 0L,
         embeddingModelVersion = p[Keys.EMBED_VERSION] ?: "",
+        pickedFolderUri = p[Keys.FOLDER_URI] ?: "",
       )
     }
 
@@ -60,4 +64,7 @@ class SettingsRepository @Inject constructor(private val context: Context) {
 
   suspend fun setEmbeddingModelVersion(version: String) =
     context.dataStore.edit { it[Keys.EMBED_VERSION] = version }
+
+  suspend fun setPickedFolderUri(uri: String) =
+    context.dataStore.edit { it[Keys.FOLDER_URI] = uri }
 }

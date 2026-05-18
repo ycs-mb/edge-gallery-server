@@ -12,7 +12,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import android.content.Intent
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
@@ -68,12 +70,27 @@ fun HomeScreen(
       access = MediaPermission.current(context)
       if (access != MediaAccess.DENIED) viewModel.scanNow()
     }
+  val folderLauncher =
+    rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+      if (uri != null) {
+        runCatching {
+          context.contentResolver.takePersistableUriPermission(
+            uri,
+            Intent.FLAG_GRANT_READ_URI_PERMISSION,
+          )
+        }
+        viewModel.onFolderPicked(uri.toString())
+      }
+    }
 
   Scaffold(
     topBar = {
       TopAppBar(
         title = { Text("Screenshots (${state.total})") },
         actions = {
+          IconButton(onClick = { folderLauncher.launch(null) }) {
+            Icon(Icons.Default.CreateNewFolder, contentDescription = "Add folder")
+          }
           IconButton(onClick = { viewModel.scanNow() }, enabled = !state.scanning) {
             if (state.scanning)
               CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
@@ -134,7 +151,10 @@ fun HomeScreen(
           }
         }
         paged.itemCount == 0 ->
-          EmptyState("No screenshots indexed yet.\nTap the refresh icon to scan.")
+          EmptyState(
+            "No screenshots indexed yet.\nTap refresh to scan, or use the folder icon " +
+              "to pick the folder your screenshots are stored in."
+          )
         else ->
           LazyColumn(modifier = Modifier.fillMaxSize()) {
             items(paged.itemCount, key = paged.itemKey { it.id }) { index ->

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import com.smartscreenshot.data.repo.ScreenshotRepository
+import com.smartscreenshot.data.settings.SettingsRepository
 import com.smartscreenshot.domain.model.Category
 import com.smartscreenshot.domain.model.Screenshot
 import com.smartscreenshot.domain.usecase.HybridSearchUseCase
@@ -44,6 +45,7 @@ constructor(
   private val repository: ScreenshotRepository,
   private val search: HybridSearchUseCase,
   private val indexScreenshots: IndexScreenshotsUseCase,
+  private val settings: SettingsRepository,
 ) : ViewModel() {
 
   private val _state = MutableStateFlow(HomeUiState())
@@ -108,6 +110,14 @@ constructor(
           scanning = false,
           message = if (count > 0) "Indexed $count new screenshot(s)" else "No new screenshots",
         )
+    }
+  }
+
+  /** Persists a user-picked SAF folder and immediately scans it. */
+  fun onFolderPicked(uri: String) {
+    viewModelScope.launch {
+      settings.setPickedFolderUri(uri)
+      scanNow()
     }
   }
 
