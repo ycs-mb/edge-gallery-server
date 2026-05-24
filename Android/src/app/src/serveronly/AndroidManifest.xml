@@ -34,6 +34,8 @@
             android:exported="true"
             android:launchMode="singleTop"
             android:screenOrientation="portrait"
+            android:supportsPictureInPicture="true"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"
             android:theme="@style/Theme.Gallery"
             tools:ignore="LockedOrientationActivity">
             <intent-filter>

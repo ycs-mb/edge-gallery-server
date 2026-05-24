@@ -17,15 +17,24 @@
 package com.google.ai.edge.gallery.serveronly
 
 import android.Manifest
+import android.app.PendingIntent
+import android.app.PictureInPictureParams
+import android.app.RemoteAction
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
+import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -57,15 +66,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.google.ai.edge.gallery.runtime.aicore.AICoreModelHelper
 import com.google.ai.edge.gallery.server.AICoreModelFactory
 import com.google.ai.edge.gallery.server.ImportedModelStore
 import com.google.ai.edge.gallery.server.LlmServerService
 import com.google.ai.edge.gallery.server.ServerModelHolder
-import com.google.ai.edge.gallery.runtime.aicore.AICoreModelHelper
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import kotlinx.coroutines.Dispatchers
@@ -80,6 +91,12 @@ class ServerLauncherActivity : ComponentActivity() {
   private val notificationPermissionLauncher =
     registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
+  // Tracks server running state at class level so PiP params builder can read it.
+  private var serverIsRunning: Boolean = false
+
+  // Compose-observable PiP mode state — triggers UI switch between full and compact views.
+  private var isPipMode by mutableStateOf(false)
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -87,19 +104,101 @@ class ServerLauncherActivity : ComponentActivity() {
           PackageManager.PERMISSION_GRANTED) {
       notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
+    setPictureInPictureParams(buildPipParams())
     setContent {
       MaterialTheme {
-        Surface(modifier = Modifier.fillMaxSize()) { ServerLauncherScreen() }
+        Surface(modifier = Modifier.fillMaxSize()) {
+          if (isPipMode) {
+            PipStatusView()
+          } else {
+            ServerLauncherScreen(
+              onServerStateChanged = { running ->
+                serverIsRunning = running
+                setPictureInPictureParams(buildPipParams())
+              }
+            )
+          }
+        }
       }
     }
+  }
+
+  override fun onPictureInPictureModeChanged(
+    isInPictureInPictureMode: Boolean,
+    newConfig: Configuration,
+  ) {
+    super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+    isPipMode = isInPictureInPictureMode
+  }
+
+  private fun buildPipParams(): PictureInPictureParams {
+    val stopPi =
+      PendingIntent.getService(
+        this,
+        0,
+        Intent(this, LlmServerService::class.java).apply { action = LlmServerService.ACTION_STOP },
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+      )
+    val stopAction =
+      RemoteAction(
+        Icon.createWithResource(this, android.R.drawable.ic_media_pause),
+        "Stop",
+        "Stop server",
+        stopPi,
+      )
+    return PictureInPictureParams.Builder()
+      .setAspectRatio(Rational(3, 2))
+      .setActions(if (serverIsRunning) listOf(stopAction) else emptyList())
+      .setAutoEnterEnabled(serverIsRunning)
+      .build()
   }
 }
 
 enum class ModelStatus { CHECKING, AVAILABLE, DOWNLOADABLE, DOWNLOADING, UNAVAILABLE, ERROR }
 
+/** Compact view shown in the PiP window — just server status and endpoint. */
+@Composable
+private fun ServerLauncherActivity.PipStatusView() {
+  val running = LlmServerService.isRunning
+  val activeModel = ServerModelHolder.activeModel?.name
+  val localIp = findLocalIpv4() ?: "?"
+  val port = LlmServerService.DEFAULT_PORT
+
+  Box(
+    modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface),
+    contentAlignment = Alignment.Center,
+  ) {
+    Column(
+      horizontalAlignment = Alignment.CenterHorizontally,
+      verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+      Text(
+        if (running) "● Running" else "● Stopped",
+        style = MaterialTheme.typography.titleMedium,
+        color = if (running) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+      )
+      if (running) {
+        Text(
+          "$localIp:$port",
+          style = MaterialTheme.typography.bodySmall,
+          textAlign = TextAlign.Center,
+        )
+        if (activeModel != null) {
+          Text(
+            activeModel.take(22),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+          )
+        }
+      }
+    }
+  }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ServerLauncherScreen() {
+private fun ServerLauncherScreen(onServerStateChanged: (Boolean) -> Unit) {
   val context = LocalContext.current
   val scope = rememberCoroutineScope()
 
@@ -137,7 +236,11 @@ private fun ServerLauncherScreen() {
 
   LaunchedEffect(Unit) {
     while (true) {
-      serverRunning = LlmServerService.isRunning
+      val running = LlmServerService.isRunning
+      if (running != serverRunning) {
+        serverRunning = running
+        onServerStateChanged(running)
+      }
       activeModel = ServerModelHolder.activeModel?.name
       delay(750)
     }
@@ -210,10 +313,12 @@ private fun ServerLauncherScreen() {
         onStart = {
           LlmServerService.start(context, LlmServerService.DEFAULT_PORT)
           serverRunning = true
+          onServerStateChanged(true)
         },
         onStop = {
           LlmServerService.stop(context)
           serverRunning = false
+          onServerStateChanged(false)
         },
         onRefreshIp = { localIp = findLocalIpv4() ?: "<unknown>" },
       )
@@ -278,11 +383,12 @@ private fun ModelListCard(
             Text(
               statusLabel(status),
               style = MaterialTheme.typography.bodySmall,
-              color = when (status) {
-                ModelStatus.AVAILABLE -> MaterialTheme.colorScheme.primary
-                ModelStatus.ERROR, ModelStatus.UNAVAILABLE -> MaterialTheme.colorScheme.error
-                else -> MaterialTheme.colorScheme.onSurfaceVariant
-              },
+              color =
+                when (status) {
+                  ModelStatus.AVAILABLE -> MaterialTheme.colorScheme.primary
+                  ModelStatus.ERROR, ModelStatus.UNAVAILABLE -> MaterialTheme.colorScheme.error
+                  else -> MaterialTheme.colorScheme.onSurfaceVariant
+                },
             )
           }
           if (status == ModelStatus.DOWNLOADABLE) {
@@ -327,8 +433,8 @@ private fun DefaultModelPicker(
         return@Card
       }
       var expanded by remember { mutableStateOf(false) }
-      val displayName = modelDefs.find { it.name == defaultModelName }?.displayName
-        ?: defaultModelName ?: "(none)"
+      val displayName =
+        modelDefs.find { it.name == defaultModelName }?.displayName ?: defaultModelName ?: "(none)"
       ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
         TextField(
           value = displayName,
@@ -336,9 +442,9 @@ private fun DefaultModelPicker(
           readOnly = true,
           label = { Text("Pick a model") },
           trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-          modifier = Modifier
-            .menuAnchor(type = ExposedDropdownMenuAnchorType.PrimaryNotEditable)
-            .fillMaxWidth(),
+          modifier =
+            Modifier.menuAnchor(type = ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+              .fillMaxWidth(),
         )
         ExposedDropdownMenu(
           expanded = expanded,
@@ -389,14 +495,15 @@ private fun ServerControls(
   }
 }
 
-private fun statusLabel(status: ModelStatus): String = when (status) {
-  ModelStatus.CHECKING -> "Checking..."
-  ModelStatus.AVAILABLE -> "Available"
-  ModelStatus.DOWNLOADABLE -> "Ready to download"
-  ModelStatus.DOWNLOADING -> "Downloading..."
-  ModelStatus.UNAVAILABLE -> "Unavailable on this device"
-  ModelStatus.ERROR -> "Error"
-}
+private fun statusLabel(status: ModelStatus): String =
+  when (status) {
+    ModelStatus.CHECKING -> "Checking..."
+    ModelStatus.AVAILABLE -> "Available"
+    ModelStatus.DOWNLOADABLE -> "Ready to download"
+    ModelStatus.DOWNLOADING -> "Downloading..."
+    ModelStatus.UNAVAILABLE -> "Unavailable on this device"
+    ModelStatus.ERROR -> "Error"
+  }
 
 private fun findLocalIpv4(): String? {
   return try {
